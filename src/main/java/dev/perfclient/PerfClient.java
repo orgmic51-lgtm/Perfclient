@@ -16,6 +16,7 @@ import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.SliderWidget;
+import net.minecraft.client.gui.widget.TextWidget;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.text.Text;
@@ -91,13 +92,11 @@ public class PerfClient implements ClientModInitializer {
         static {
             boolean m = false;
             try {
-                // Launchers (Pojav, Zalith, FCL and forks) set env vars with these prefixes
                 for (String k : System.getenv().keySet()) {
                     String u = k.toUpperCase();
                     if (u.startsWith("POJAV") || u.startsWith("FCL_") || u.startsWith("ZALITH")
                             || u.startsWith("MOD_ANDROID") || u.startsWith("MOBILEGLUES")) { m = true; break; }
                 }
-                // Game folder lives in Android storage
                 String dir = FabricLoader.getInstance().getGameDir().toAbsolutePath().toString();
                 if (dir.contains("/Android/data/") || dir.startsWith("/storage/emulated")
                         || dir.startsWith("/data/user/") || dir.startsWith("/data/data/")) m = true;
@@ -213,11 +212,19 @@ public class PerfClient implements ClientModInitializer {
     }
 
     // ================= Module: FPS HUD =================
+    // Uses TextWidget because DrawContext.drawText changed return type in newer versions
     public static class FpsHud implements Module {
+        private TextWidget w;
+
         @Override
         public void onHud(DrawContext ctx, MinecraftClient c) {
             if (!CONFIG.fpsHud || c.options.hudHidden) return;
-            ctx.drawText(c.textRenderer, c.getCurrentFps() + " FPS", 4, 4, 0xFFFFFFFF, true);
+            if (w == null) w = new TextWidget(Text.literal(""), c.textRenderer);
+            Text t = Text.literal(c.getCurrentFps() + " FPS");
+            w.setMessage(t);
+            w.setWidth(c.textRenderer.getWidth(t));
+            w.setPosition(4, 4);
+            w.render(ctx, 0, 0, 0f);
         }
     }
 
@@ -252,6 +259,15 @@ public class PerfClient implements ClientModInitializer {
             int x2 = x1 + half + 4;
             int y = top + header;
             int step = rowH + gap;
+
+            TextWidget title = new TextWidget(Text.literal("PerfClient").formatted(Formatting.BOLD), textRenderer);
+            title.setPosition(left + 8, top + 8);
+            addDrawableChild(title);
+
+            String mode = Mobile.is() ? "Mobile mode" : "Desktop mode";
+            TextWidget modeW = new TextWidget(Text.literal(mode).formatted(Formatting.GRAY), textRenderer);
+            modeW.setPosition(left + pw - 8 - textRenderer.getWidth(mode), top + 8);
+            addDrawableChild(modeW);
 
             toggle(x1, y, half, "Entity Culling", "Hide entities far from you",
                     () -> c.entityCulling, v -> c.entityCulling = v);
@@ -309,15 +325,6 @@ public class PerfClient implements ClientModInitializer {
             super.renderBackground(ctx, mx, my, delta);
             ctx.fill(left, top, left + pw, top + panelH, 0xDD0D1117);
             ctx.fill(left, top, left + pw, top + 2, 0xFF3FB950);
-        }
-
-        @Override
-        public void render(DrawContext ctx, int mx, int my, float delta) {
-            super.render(ctx, mx, my, delta);
-            ctx.drawText(textRenderer, Text.literal("PerfClient").formatted(Formatting.BOLD),
-                    left + 8, top + 8, 0xFFFFFFFF, true);
-            String mode = Mobile.is() ? "Mobile mode" : "Desktop mode";
-            ctx.drawText(textRenderer, mode, left + pw - 8 - textRenderer.getWidth(mode), top + 8, 0xFF8B949E, false);
         }
 
         @Override
