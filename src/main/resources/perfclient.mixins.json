@@ -1,0 +1,7 @@
+{
+  "required": false,
+  "package": "dev.perfclient.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["PerfMixin"],
+  "injectors": { "defaultRequire": 0 }
+}
