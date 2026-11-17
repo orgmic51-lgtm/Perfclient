@@ -4,10 +4,9 @@
   "version": "${version}",
   "name": "PerfClient",
   "description": "Modular, mobile-friendly performance client.",
-  "authors": ["Orgmicbanana"],
+  "authors": ["You"],
   "environment": "client",
   "entrypoints": { "client": ["dev.perfclient.PerfClient"] },
-  "mixins": ["perfclient.mixins.json"],
   "depends": {
     "fabricloader": ">=0.16.0",
     "minecraft": ">=1.21 <=1.21.11",
