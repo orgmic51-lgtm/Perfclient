@@ -13,6 +13,9 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.GameMenuScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
+import net.minecraft.client.gui.screen.option.OptionsScreen;
+import net.minecraft.client.gui.screen.world.SelectWorldScreen;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.SliderWidget;
@@ -29,6 +32,7 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
+import java.util.function.Supplier;
 
 public class PerfClient implements ClientModInitializer {
 
@@ -53,7 +57,7 @@ public class PerfClient implements ClientModInitializer {
         catch (Throwable t) { System.err.println("[PerfClient] HUD hook unavailable, HUD disabled: " + t); }
 
         try { GuiHooks.registerButtons(); }
-        catch (Throwable t) { System.err.println("[PerfClient] Menu button unavailable: " + t); }
+        catch (Throwable t) { System.err.println("[PerfClient] Menu hooks unavailable: " + t); }
     }
 
     // Isolated so a missing HUD API can't break the rest of the mod
@@ -66,10 +70,14 @@ public class PerfClient implements ClientModInitializer {
         }
     }
 
-    // "PerfClient" button on the title screen and pause menu
+    // Replaces the title screen with MainMenu, adds a PerfClient button to the pause menu
     static final class GuiHooks {
         static void registerButtons() {
             ScreenEvents.AFTER_INIT.register((client, screen, w, h) -> {
+                if (screen instanceof TitleScreen && CONFIG.customMenu) {
+                    client.setScreen(new MainMenu());
+                    return;
+                }
                 if (screen instanceof GameMenuScreen || screen instanceof TitleScreen) {
                     Screens.getButtons(screen).add(
                         ButtonWidget.builder(Text.literal("PerfClient"),
@@ -118,6 +126,7 @@ public class PerfClient implements ClientModInitializer {
         public boolean particleLimiter = true;
         public boolean autoViewDistance = true;
         public boolean fpsHud = true;
+        public boolean customMenu = true;
 
         public int entityCullDistance = 64;
         public int maxParticlesPerTick = 600;
@@ -153,6 +162,7 @@ public class PerfClient implements ClientModInitializer {
             particleLimiter = o.particleLimiter;
             autoViewDistance = o.autoViewDistance;
             fpsHud = o.fpsHud;
+            customMenu = o.customMenu;
             entityCullDistance = o.entityCullDistance;
             maxParticlesPerTick = o.maxParticlesPerTick;
             targetFps = o.targetFps;
@@ -228,6 +238,125 @@ public class PerfClient implements ClientModInitializer {
         }
     }
 
+    // ================= Custom main menu =================
+    public static class MainMenu extends Screen {
+        private int cardX, cardY, cardW, cardH;
+
+        public MainMenu() {
+            super(Text.literal("PerfClient"));
+        }
+
+        @Override
+        public boolean shouldCloseOnEsc() { return false; }
+
+        @Override
+        protected void init() {
+            boolean small = height < 220;
+            int btnH = small ? 18 : 22;
+            int gap = small ? 3 : 5;
+            int headerH = small ? 34 : 54;
+            int buttons = 5;
+
+            cardW = Math.min(220, width - 12);
+            cardH = headerH + buttons * (btnH + gap) + 8;
+            cardX = (width - cardW) / 2;
+            cardY = Math.max(4, (height - cardH) / 2 - 4);
+
+            int bw = cardW - 20;
+            int bx = cardX + 10;
+            int by = cardY + headerH;
+
+            // Title + subtitle
+            Text title = Text.literal("PERFCLIENT").formatted(Formatting.GREEN, Formatting.BOLD);
+            TextWidget titleW = new TextWidget(title, textRenderer);
+            titleW.setPosition((width - textRenderer.getWidth(title)) / 2, cardY + (small ? 8 : 12));
+            addDrawableChild(titleW);
+
+            if (!small) {
+                Text sub = Text.literal("Fast  |  Light  |  Mobile friendly").formatted(Formatting.GRAY);
+                TextWidget subW = new TextWidget(sub, textRenderer);
+                subW.setPosition((width - textRenderer.getWidth(sub)) / 2, cardY + 30);
+                addDrawableChild(subW);
+            }
+
+            // Buttons
+            addDrawableChild(ButtonWidget.builder(Text.literal("Singleplayer"),
+                    b -> open(() -> new SelectWorldScreen(this)))
+                    .dimensions(bx, by, bw, btnH).build());
+            by += btnH + gap;
+
+            addDrawableChild(ButtonWidget.builder(Text.literal("Multiplayer"),
+                    b -> open(() -> new MultiplayerScreen(this)))
+                    .dimensions(bx, by, bw, btnH).build());
+            by += btnH + gap;
+
+            addDrawableChild(ButtonWidget.builder(Text.literal("Options"),
+                    b -> open(() -> new OptionsScreen(this, client.options)))
+                    .dimensions(bx, by, bw, btnH).build());
+            by += btnH + gap;
+
+            addDrawableChild(ButtonWidget.builder(Text.literal("PerfClient Settings"),
+                    b -> open(() -> new PerfScreen(this)))
+                    .dimensions(bx, by, bw, btnH).build());
+            by += btnH + gap;
+
+            addDrawableChild(ButtonWidget.builder(Text.literal("Quit Game"),
+                    b -> client.scheduleStop())
+                    .dimensions(bx, by, bw, btnH).build());
+
+            // Footer info
+            String ver = "";
+            try { ver = "Minecraft " + client.getGameVersion() + "  |  "; } catch (Throwable ignored) {}
+            int mods = FabricLoader.getInstance().getAllMods().size();
+            TextWidget info = new TextWidget(
+                    Text.literal(ver + mods + " mods").formatted(Formatting.DARK_GRAY), textRenderer);
+            info.setPosition(6, height - 12);
+            addDrawableChild(info);
+
+            String mode = Mobile.is() ? "Mobile mode" : "Desktop mode";
+            TextWidget modeW = new TextWidget(Text.literal(mode).formatted(Formatting.DARK_GRAY), textRenderer);
+            modeW.setPosition(width - 6 - textRenderer.getWidth(mode), height - 12);
+            addDrawableChild(modeW);
+        }
+
+        private void open(Supplier<Screen> s) {
+            try { client.setScreen(s.get()); }
+            catch (Throwable t) { System.err.println("[PerfClient] Could not open screen: " + t); }
+        }
+
+        private static int lerp(int a, int b, float t) {
+            int ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+            int br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+            return 0xFF000000 | ((int) (ar + (br - ar) * t) << 16)
+                    | ((int) (ag + (bg - ag) * t) << 8) | (int) (ab + (bb - ab) * t);
+        }
+
+        @Override
+        public void renderBackground(DrawContext ctx, int mx, int my, float delta) {
+            // Vertical gradient from strips (only uses fill, which is stable across versions)
+            int strips = 40;
+            for (int i = 0; i < strips; i++) {
+                int y1 = height * i / strips;
+                int y2 = height * (i + 1) / strips;
+                ctx.fill(0, y1, width, y2, lerp(0x0A0E13, 0x182233, i / (float) (strips - 1)));
+            }
+            ctx.fill(0, height - 2, width, height, 0xFF238636);
+
+            // Card with border and accent bar
+            ctx.fill(cardX - 1, cardY - 1, cardX + cardW + 1, cardY + cardH + 1, 0xFF21262D);
+            ctx.fill(cardX, cardY, cardX + cardW, cardY + cardH, 0xF0111720);
+            ctx.fill(cardX, cardY, cardX + cardW, cardY + 2, 0xFF238636);
+
+            // Light sweeping across the accent bar
+            int seg = 50;
+            long t = System.currentTimeMillis() / 8;
+            int sx = cardX + (int) (t % (cardW + seg)) - seg;
+            int x1 = Math.max(cardX, sx);
+            int x2 = Math.min(cardX + cardW, sx + seg);
+            if (x2 > x1) ctx.fill(x1, cardY, x2, cardY + 2, 0xFF7EE787);
+        }
+    }
+
     // ================= Settings GUI =================
     public static class PerfScreen extends Screen {
         private final Screen parent;
@@ -293,8 +422,10 @@ public class PerfClient implements ClientModInitializer {
                     c.maxViewDistance, v -> c.maxViewDistance = v));
             y += step;
 
-            toggle(x1, y, inner, "FPS Counter", "Show FPS in the top-left corner",
+            toggle(x1, y, half, "FPS Counter", "Show FPS in the top-left corner",
                     () -> c.fpsHud, v -> c.fpsHud = v);
+            toggle(x2, y, inner - half - 4, "Custom Menu", "Use the PerfClient main menu (applies next time the menu opens)",
+                    () -> c.customMenu, v -> c.customMenu = v);
             y += step;
 
             addDrawableChild(ButtonWidget.builder(Text.literal("Reset"), b -> {
@@ -332,35 +463,4 @@ public class PerfClient implements ClientModInitializer {
             client.setScreen(parent);
         }
 
-        @Override
-        public void removed() {
-            CONFIG.save();
-        }
-
-        private static class IntSlider extends SliderWidget {
-            private final String label;
-            private final int min, max;
-            private final IntConsumer setter;
-
-            IntSlider(int x, int y, int w, int h, String label, int min, int max, int value, IntConsumer setter) {
-                super(x, y, w, h, Text.empty(), (Math.max(min, Math.min(max, value)) - min) / (double) (max - min));
-                this.label = label;
-                this.min = min;
-                this.max = max;
-                this.setter = setter;
-                updateMessage();
-            }
-
-            private int get() { return min + (int) Math.round(value * (max - min)); }
-
-            @Override
-            protected void updateMessage() {
-                if (label == null) return;
-                setMessage(Text.literal(label + ": " + get()));
-            }
-
-            @Override
-            protected void applyValue() { setter.accept(get()); }
-        }
-    }
-}
+    
