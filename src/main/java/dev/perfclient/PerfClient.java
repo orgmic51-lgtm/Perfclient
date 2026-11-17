@@ -20,8 +20,7 @@ import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.SliderWidget;
 import net.minecraft.client.gui.widget.TextWidget;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.client.option.ParticlesMode;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -176,25 +175,49 @@ public class PerfClient implements ClientModInitializer {
         }
     }
 
-    // ================= Module: Entity culling =================
+    // ================= Module: Entity culling (no mixin) =================
+    // Uses vanilla "Entity Distance" setting instead of hooking the renderer
     public static class EntityCull implements Module {
-        public static boolean shouldCull(Entity e, double cx, double cy, double cz) {
-            if (CONFIG == null || !CONFIG.entityCulling) return false;
-            if (e instanceof PlayerEntity || e.hasPassengers() || e.hasVehicle()) return false;
-            double max = CONFIG.entityCullDistance;
-            double dx = e.getX() - cx, dy = e.getY() - cy, dz = e.getZ() - cz;
-            return dx * dx + dy * dy + dz * dz > max * max;
+        private Double original;
+        private int t = 0;
+
+        @Override
+        public void onTick(MinecraftClient c) {
+            if (c.options == null || ++t < 20) return;
+            t = 0;
+            var opt = c.options.getEntityDistanceScaling();
+            if (CONFIG.entityCulling) {
+                if (original == null) original = opt.getValue();
+                double want = Math.max(0.5, Math.min(5.0, CONFIG.entityCullDistance / 64.0));
+                if (Math.abs(opt.getValue() - want) > 0.01) opt.setValue(want);
+            } else if (original != null) {
+                opt.setValue(original);
+                original = null;
+            }
         }
     }
 
-    // ================= Module: Particle limiter =================
+    // ================= Module: Particle limiter (no mixin) =================
+    // Uses vanilla "Particles" setting instead of hooking the particle manager
     public static class ParticleLimit implements Module {
-        private static int spawned = 0;
-        @Override public void onTick(MinecraftClient c) { spawned = 0; }
+        private ParticlesMode original;
+        private int t = 0;
 
-        public static boolean allow() {
-            if (CONFIG == null || !CONFIG.particleLimiter) return true;
-            return ++spawned <= CONFIG.maxParticlesPerTick;
+        @Override
+        public void onTick(MinecraftClient c) {
+            if (c.options == null || ++t < 20) return;
+            t = 0;
+            var opt = c.options.getParticles();
+            if (CONFIG.particleLimiter) {
+                if (original == null) original = opt.getValue();
+                int m = CONFIG.maxParticlesPerTick;
+                ParticlesMode want = m <= 200 ? ParticlesMode.MINIMAL
+                        : m <= 500 ? ParticlesMode.DECREASED : ParticlesMode.ALL;
+                if (opt.getValue() != want) opt.setValue(want);
+            } else if (original != null) {
+                opt.setValue(original);
+                original = null;
+            }
         }
     }
 
@@ -266,7 +289,6 @@ public class PerfClient implements ClientModInitializer {
             int bx = cardX + 10;
             int by = cardY + headerH;
 
-            // Title + subtitle
             Text title = Text.literal("PERFCLIENT").formatted(Formatting.GREEN, Formatting.BOLD);
             TextWidget titleW = new TextWidget(title, textRenderer);
             titleW.setPosition((width - textRenderer.getWidth(title)) / 2, cardY + (small ? 8 : 12));
@@ -279,7 +301,6 @@ public class PerfClient implements ClientModInitializer {
                 addDrawableChild(subW);
             }
 
-            // Buttons
             addDrawableChild(ButtonWidget.builder(Text.literal("Singleplayer"),
                     b -> open(() -> new SelectWorldScreen(this)))
                     .dimensions(bx, by, bw, btnH).build());
@@ -304,7 +325,6 @@ public class PerfClient implements ClientModInitializer {
                     b -> client.scheduleStop())
                     .dimensions(bx, by, bw, btnH).build());
 
-            // Footer info
             String ver = "";
             try { ver = "Minecraft " + client.getGameVersion() + "  |  "; } catch (Throwable ignored) {}
             int mods = FabricLoader.getInstance().getAllMods().size();
@@ -333,7 +353,6 @@ public class PerfClient implements ClientModInitializer {
 
         @Override
         public void renderBackground(DrawContext ctx, int mx, int my, float delta) {
-            // Vertical gradient from strips (only uses fill, which is stable across versions)
             int strips = 40;
             for (int i = 0; i < strips; i++) {
                 int y1 = height * i / strips;
@@ -342,12 +361,10 @@ public class PerfClient implements ClientModInitializer {
             }
             ctx.fill(0, height - 2, width, height, 0xFF238636);
 
-            // Card with border and accent bar
             ctx.fill(cardX - 1, cardY - 1, cardX + cardW + 1, cardY + cardH + 1, 0xFF21262D);
             ctx.fill(cardX, cardY, cardX + cardW, cardY + cardH, 0xF0111720);
             ctx.fill(cardX, cardY, cardX + cardW, cardY + 2, 0xFF238636);
 
-            // Light sweeping across the accent bar
             int seg = 50;
             long t = System.currentTimeMillis() / 8;
             int sx = cardX + (int) (t % (cardW + seg)) - seg;
@@ -398,13 +415,13 @@ public class PerfClient implements ClientModInitializer {
             modeW.setPosition(left + pw - 8 - textRenderer.getWidth(mode), top + 8);
             addDrawableChild(modeW);
 
-            toggle(x1, y, half, "Entity Culling", "Hide entities far from you",
+            toggle(x1, y, half, "Entity Culling", "Lowers vanilla Entity Distance",
                     () -> c.entityCulling, v -> c.entityCulling = v);
             addDrawableChild(new IntSlider(x2, y, inner - half - 4, rowH, "Distance", 16, 128,
                     c.entityCullDistance, v -> c.entityCullDistance = v));
             y += step;
 
-            toggle(x1, y, half, "Particle Limit", "Cap particles spawned per tick",
+            toggle(x1, y, half, "Particle Limit", "Sets vanilla Particles to Decreased/Minimal",
                     () -> c.particleLimiter, v -> c.particleLimiter = v);
             addDrawableChild(new IntSlider(x2, y, inner - half - 4, rowH, "Max/tick", 20, 1000,
                     c.maxParticlesPerTick, v -> c.maxParticlesPerTick = v));
@@ -463,4 +480,35 @@ public class PerfClient implements ClientModInitializer {
             client.setScreen(parent);
         }
 
-    
+        @Override
+        public void removed() {
+            CONFIG.save();
+        }
+
+        private static class IntSlider extends SliderWidget {
+            private final String label;
+            private final int min, max;
+            private final IntConsumer setter;
+
+            IntSlider(int x, int y, int w, int h, String label, int min, int max, int value, IntConsumer setter) {
+                super(x, y, w, h, Text.empty(), (Math.max(min, Math.min(max, value)) - min) / (double) (max - min));
+                this.label = label;
+                this.min = min;
+                this.max = max;
+                this.setter = setter;
+                updateMessage();
+            }
+
+            private int get() { return min + (int) Math.round(value * (max - min)); }
+
+            @Override
+            protected void updateMessage() {
+                if (label == null) return;
+                setMessage(Text.literal(label + ": " + get()));
+            }
+
+            @Override
+            protected void applyValue() { setter.accept(get()); }
+        }
+    }
+}
