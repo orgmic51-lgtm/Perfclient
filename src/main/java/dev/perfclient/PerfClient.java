@@ -20,7 +20,7 @@ import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.SliderWidget;
 import net.minecraft.client.gui.widget.TextWidget;
-import net.minecraft.client.option.ParticlesMode;
+import net.minecraft.client.option.SimpleOption;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -198,24 +198,29 @@ public class PerfClient implements ClientModInitializer {
     }
 
     // ================= Module: Particle limiter (no mixin) =================
-    // Uses vanilla "Particles" setting instead of hooking the particle manager
+    // Uses vanilla "Particles" setting. Enum order is ALL, DECREASED, MINIMAL.
+    // Written without naming the enum class because its package differs between versions.
     public static class ParticleLimit implements Module {
-        private ParticlesMode original;
+        private Object original;
         private int t = 0;
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private static void setRaw(SimpleOption opt, Object v) { opt.setValue(v); }
 
         @Override
         public void onTick(MinecraftClient c) {
             if (c.options == null || ++t < 20) return;
             t = 0;
-            var opt = c.options.getParticles();
+            SimpleOption<?> opt = c.options.getParticles();
+            Object cur = opt.getValue();
             if (CONFIG.particleLimiter) {
-                if (original == null) original = opt.getValue();
+                if (original == null) original = cur;
                 int m = CONFIG.maxParticlesPerTick;
-                ParticlesMode want = m <= 200 ? ParticlesMode.MINIMAL
-                        : m <= 500 ? ParticlesMode.DECREASED : ParticlesMode.ALL;
-                if (opt.getValue() != want) opt.setValue(want);
+                int idx = m <= 200 ? 2 : m <= 500 ? 1 : 0;
+                Object[] vals = cur.getClass().getEnumConstants();
+                if (vals != null && idx < vals.length && cur != vals[idx]) setRaw(opt, vals[idx]);
             } else if (original != null) {
-                opt.setValue(original);
+                setRaw(opt, original);
                 original = null;
             }
         }
