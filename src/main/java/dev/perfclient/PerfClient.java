@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
@@ -17,13 +16,10 @@ import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.SliderWidget;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
-import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,9 +53,6 @@ public class PerfClient implements ClientModInitializer {
 
         try { GuiHooks.registerButtons(); }
         catch (Throwable t) { System.err.println("[PerfClient] Menu button unavailable: " + t); }
-
-        try { GuiHooks.registerKey(); }
-        catch (Throwable t) { System.err.println("[PerfClient] Keybind unavailable on this version: " + t); }
     }
 
     // Isolated so a missing HUD API can't break the rest of the mod
@@ -72,10 +65,8 @@ public class PerfClient implements ClientModInitializer {
         }
     }
 
-    // Menu button + keybind that open the settings screen
+    // "PerfClient" button on the title screen and pause menu
     static final class GuiHooks {
-        static KeyBinding key;
-
         static void registerButtons() {
             ScreenEvents.AFTER_INIT.register((client, screen, w, h) -> {
                 if (screen instanceof GameMenuScreen || screen instanceof TitleScreen) {
@@ -83,16 +74,6 @@ public class PerfClient implements ClientModInitializer {
                         ButtonWidget.builder(Text.literal("PerfClient"),
                                 b -> client.setScreen(new PerfScreen(screen)))
                             .dimensions(4, h - 24, 70, 20).build());
-                }
-            });
-        }
-
-        static void registerKey() {
-            key = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-                    "key.perfclient.open", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "PerfClient"));
-            ClientTickEvents.END_CLIENT_TICK.register(c -> {
-                while (key.wasPressed()) {
-                    if (c.currentScreen == null) c.setScreen(new PerfScreen(null));
                 }
             });
         }
@@ -109,12 +90,21 @@ public class PerfClient implements ClientModInitializer {
         private static final boolean MOBILE;
         static {
             boolean m = false;
-            String[] vars = {"POJAV_RENDERER", "POJAV_NATIVEDIR", "POJAV_ENVIRON",
-                             "FCL_NATIVEDIR", "FCL_RENDERER", "ZALITH_RENDERER"};
-            for (String v : vars) if (System.getenv(v) != null) { m = true; break; }
-            String os = System.getProperty("os.name", "").toLowerCase();
-            String vendor = System.getProperty("java.vendor", "").toLowerCase();
-            if (os.contains("android") || vendor.contains("android")) m = true;
+            try {
+                // Launchers (Pojav, Zalith, FCL and forks) set env vars with these prefixes
+                for (String k : System.getenv().keySet()) {
+                    String u = k.toUpperCase();
+                    if (u.startsWith("POJAV") || u.startsWith("FCL_") || u.startsWith("ZALITH")
+                            || u.startsWith("MOD_ANDROID") || u.startsWith("MOBILEGLUES")) { m = true; break; }
+                }
+                // Game folder lives in Android storage
+                String dir = FabricLoader.getInstance().getGameDir().toAbsolutePath().toString();
+                if (dir.contains("/Android/data/") || dir.startsWith("/storage/emulated")
+                        || dir.startsWith("/data/user/") || dir.startsWith("/data/data/")) m = true;
+                String os = System.getProperty("os.name", "").toLowerCase();
+                String vendor = System.getProperty("java.vendor", "").toLowerCase();
+                if (os.contains("android") || vendor.contains("android")) m = true;
+            } catch (Throwable ignored) {}
             MOBILE = m;
         }
         public static boolean is() { return MOBILE; }
@@ -366,4 +356,4 @@ public class PerfClient implements ClientModInitializer {
             protected void applyValue() { setter.accept(get()); }
         }
     }
-                                        }
+}
