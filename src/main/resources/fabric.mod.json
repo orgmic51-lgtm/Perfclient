@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "perfclient",
+  "version": "${version}",
+  "name": "PerfClient",
+  "description": "Modular, mobile-friendly performance client.",
+  "authors": ["Orgmicbanana"],
+  "environment": "client",
+  "entrypoints": { "client": ["dev.perfclient.PerfClient"] },
+  "mixins": ["perfclient.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=1.21 <=1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
